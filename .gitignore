@@ -1,0 +1,28 @@
+# Buat file .gitignore
+@"
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Model files (optional - remove if you want to include models)
+*.pt
+*.pth
+*.weights
+
+# Video files (optional - remove if you want to include videos)
+*.mp4
+*.avi
+*.mov
+
+# Firebase credentials
+mlff-firebase-key.json
+
+# Docker generated
+.DS_Store
+Thumbs.db
+
+# Logs
+logs/
+*.log
+"@ > .gitignore
