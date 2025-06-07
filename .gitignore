@@ -16,7 +16,7 @@ __pycache__/
 *.mov
 
 # # Firebase credentials
-# mlff-firebase-key.json
+mlff-firebase-key.json
 
 # Docker generated
 .DS_Store
