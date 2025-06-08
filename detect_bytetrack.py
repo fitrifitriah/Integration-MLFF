@@ -38,7 +38,7 @@ ROOT = Path(os.path.relpath(ROOT, Path.cwd()))
 from models.common import DetectMultiBackend
 from utils.dataloaders import IMG_FORMATS, VID_FORMATS, LoadImages, LoadScreenshots, LoadStreams
 from utils.general import (LOGGER, Profile, check_file, check_img_size, check_imshow, 
-                          non_max_suppression, scale_boxes, increment_path)
+                          non_max_suppression, scale_boxes, increment_path, strip_optimizer)
 from utils.plots import Annotator, colors, save_one_box
 from utils.torch_utils import select_device, smart_inference_mode
 
@@ -573,7 +573,7 @@ def run_bytetrack_detection(
     half=False,
     dnn=False,
     vid_stride=1,
-    camera_angle=None,  # None for auto-detection    
+    camera_angle=None,  # None for auto-detection
     roi_file='bytetrack_rois.json'
 ):
     global EDITING_MODE, CURRENT_ROI, ROIS, COUNTING_LINES, ROI_FILLED
@@ -601,6 +601,13 @@ def run_bytetrack_detection(
     device = select_device(device)
     model = DetectMultiBackend(weights, device=device, dnn=dnn, data=data, fp16=half)
     stride, names, pt = model.stride, model.names, model.pt
+    
+    # Make sure imgsz is a list with at least 2 elements [height, width]
+    if isinstance(imgsz, int):
+        imgsz = [imgsz, imgsz]  # Convert to list if it's a single int
+    elif isinstance(imgsz, list) and len(imgsz) == 1:
+        imgsz = [imgsz[0], imgsz[0]]  # Duplicate if only one dimension provided
+    
     imgsz = check_img_size(imgsz, s=stride)
     
     print(f"🤖 Model loaded: {model.__class__.__name__}")
@@ -636,7 +643,7 @@ def run_bytetrack_detection(
     except Exception as e:
         print(f"⚠️ ROS initialization error: {e}")
         vehicle_pub = None
-    
+
     # Initialize ByteTrack counters for each ROI
     bytetrack_counters = []
     
@@ -749,6 +756,7 @@ def run_bytetrack_detection(
                             
                             # Count line crossings
                             new_counts = counter.count_line_crossings(counting_line)
+                            
                             # Publish ke ROS topic jika line crossing terdeteksi
                             if new_counts > 0 and vehicle_pub is not None:
                                 for class_id, count in counter.class_counts.items():
@@ -760,6 +768,7 @@ def run_bytetrack_detection(
                                         msg_data = f"G{golongan}|{jalur}"
                                         vehicle_pub.publish(msg_data)
                                         print(f"📤 Published to /vehicle_classification: {msg_data}")
+
                             # Draw tracks
                             for track in tracks:
                                 if track['confirmed']:
@@ -790,7 +799,8 @@ def run_bytetrack_detection(
                 
                 avg_fps = np.mean(fps_history)
                 avg_inference = np.mean(inference_times)
-                  # Draw ROIs and counting lines
+                
+                # Draw ROIs and counting lines
                 for roi_idx, (roi, counting_line) in enumerate(zip(ROIS, COUNTING_LINES)):
                     color = ZONE_COLORS[roi_idx % len(ZONE_COLORS)]
                     
@@ -851,7 +861,7 @@ def run_bytetrack_detection(
                 cv2.putText(im0, f"ROIs: {len(ROIS)}", (20, y_pos),
                            cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
                 y_pos += 25
-                
+
                 editing_status = "ON" if EDITING_MODE else "OFF"
                 cv2.putText(im0, f"Edit Mode: {editing_status}", (20, y_pos),
                            cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 255) if EDITING_MODE else (255, 255, 255), 2)
@@ -884,7 +894,7 @@ def run_bytetrack_detection(
                 im0 = annotator.result()
                 if view_img:
                     cv2.imshow(window_name, im0)
-                      # Handle keyboard input
+                    # Handle keyboard input
                     key = cv2.waitKey(1) & 0xFF
                     if key == ord('q'):
                         break

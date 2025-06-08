@@ -639,11 +639,16 @@ def run_bytetrack_detection(
         rospy.init_node('yolo_detection_node', anonymous=True)
         vehicle_pub = rospy.Publisher('/vehicle_classification', String, queue_size=10)
         print("🚀 ROS publisher initialized")
-        print(f"Publisher camera: /vehicle_classification")
+        print(f"Publisher topic: /vehicle_classification")
     except Exception as e:
         print(f"⚠️ ROS initialization error: {e}")
         vehicle_pub = None
-
+    
+    # Initialize variable to track last published class
+    last_published_class = None
+    last_published_time = 0
+    publish_cooldown = 0.5  # seconds between publications to avoid flooding
+    
     # Initialize ByteTrack counters for each ROI
     bytetrack_counters = []
     
@@ -705,13 +710,60 @@ def run_bytetrack_detection(
                 save_path = str(save_dir / p.name)
                 annotator = Annotator(im0, line_width=line_thickness, example=str(names))
                 
-                # Auto-detect camera angle if needed
-                if angle_detector and len(det) > 2:
-                    detected_angle = angle_detector.detect_angle(im0, det)
-                    if detected_angle is not None:
-                        current_camera_angle = detected_angle
-                        angle_detector = None  # Stop detection after calibration
-                        print(f"🎯 Using camera angle: {current_camera_angle}°")
+                # Print detection results per frame - similar to detect.py
+                detection_info = f"\r{seen} {s}"
+                if len(det):
+                    # Scale boxes
+                    det[:, :4] = scale_boxes(im.shape[2:], det[:, :4], im0.shape).round()
+                    
+                    # Build detection summary string
+                    for c in det[:, 5].unique():
+                        n = (det[:, 5] == c).sum()
+                        class_name = names[int(c)]
+                        detection_info += f"{n} {class_name}{'s' * (n > 1)}, "
+                    
+                    # Find the highest confidence vehicle class in this frame
+                    if len(det) > 0 and vehicle_pub is not None:
+                        # Sort detections by confidence (highest first)
+                        sorted_det = sorted(det, key=lambda x: float(x[4]), reverse=True)
+                        
+                        # Get the class with highest confidence
+                        best_det = sorted_det[0]
+                        best_class = int(best_det[5].item())
+                        best_conf = float(best_det[4].item())
+                        
+                        # Only publish if confidence is good and enough time has passed
+                        current_time = time.time()
+                        if (best_conf > 0.6 and 
+                            (current_time - last_published_time) > publish_cooldown):
+                            
+                            # Vehicle class is 0-indexed in model, but we need 1-indexed (G1-G5)
+                            golongan = best_class + 1
+                            jalur = 1  # Default lane if no ROI defined
+                            
+                            # Use ROI information if available
+                            if len(ROIS) > 0:
+                                # Find which ROI contains the detection
+                                bbox = best_det[:4].cpu().numpy()
+                                center = [(bbox[0] + bbox[2])/2, (bbox[1] + bbox[3])/2]
+                                
+                                for roi_idx, roi in enumerate(ROIS):
+                                    if point_in_polygon(center, roi):
+                                        jalur = roi_idx + 1
+                                        break
+                            
+                            # Format and publish message
+                            msg_data = f"G{golongan}|{jalur}"
+                            vehicle_pub.publish(msg_data)
+                            print(f"📤 Published: {msg_data} (conf: {best_conf:.2f})")
+                            
+                            # Update tracking variables
+                            last_published_class = golongan
+                            last_published_time = current_time
+                
+                # Print current frame detection info
+                print(detection_info, end='')
+                sys.stdout.flush()
                 
                 # Initialize counters for ROIs if needed
                 while len(bytetrack_counters) < len(ROIS):
@@ -1019,10 +1071,27 @@ def main(opt):
     print("🚀 YOLOv9 + ByteTrack Multi-ROI Vehicle Detection and Counting")
     print("="*70)
     
-    # Convert opt to dict and call detection function
-    run_bytetrack_detection(**vars(opt))
+    try:
+        # Convert opt to dict and call detection function
+        run_bytetrack_detection(**vars(opt))
+    except KeyboardInterrupt:
+        print("\n⏹️ Detection stopped by user")
+    except Exception as e:
+        print(f"\n❌ Error: {e}")
+    finally:
+        # Ensure proper ROS node shutdown
+        if rospy.is_initialized():
+            print("🛑 Shutting down ROS node...")
+            rospy.signal_shutdown("Program terminated")
 
 
 if __name__ == "__main__":
-    opt = parse_opt()
-    main(opt)
+    try:
+        opt = parse_opt()
+        main(opt)
+    except KeyboardInterrupt:
+        print("\n⏹️ Program terminated by user")
+    finally:
+        # Make sure OpenCV windows are closed
+        cv2.destroyAllWindows()
+        print("✅ Cleanup complete")

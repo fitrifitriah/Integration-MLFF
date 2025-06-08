@@ -1,0 +1,65 @@
+FROM nvcr.io/nvidia/l4t-pytorch:r35.2.1-pth2.0-py3
+
+# Install ROS Noetic
+RUN apt-get update && apt-get install -y \
+    curl \
+    gnupg2 \
+    lsb-release \
+    && rm -rf /var/lib/apt/lists/*
+
+# Add ROS repository key
+RUN curl -s https://raw.githubusercontent.com/ros/rosdistro/master/ros.key | apt-key add -
+
+# Add ROS repository
+RUN echo "deb http://packages.ros.org/ros/ubuntu $(lsb_release -sc) main" > /etc/apt/sources.list.d/ros-latest.list
+
+# Install ROS minimal dan dependensi tambahan saja
+RUN apt-get update && apt-get install -y \
+    ros-noetic-ros-base \
+    ros-noetic-std-msgs \
+    python3-pip \
+    git \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install ROS Python packages dan dependensi aplikasi khusus saja
+RUN pip3 install --no-cache-dir \
+    firebase-admin \
+    pyserial \
+    rospkg \
+    catkin_pkg \
+    pandas \
+    matplotlib \
+    seaborn \
+    scipy \
+    tqdm \
+    pyyaml \
+    IPython
+
+# Clone YOLOv9 repository
+WORKDIR /home
+RUN git clone https://github.com/WongKinYiu/yolov9.git
+
+# Create and set working directory
+WORKDIR /home/ros_ws
+
+# Copy files (these will be copied from the build context)
+# Copy files
+COPY detect_bytetrack_fixed.py /home/ros_ws/
+COPY subscriber.py /home/ros_ws/
+COPY sensor.py /home/ros_ws/
+COPY best3_sgd3.pt /home/ros_ws/
+COPY launch.sh /home/ros_ws/
+COPY entrypoint.sh /entrypoint.sh
+COPY waskita_baru_1.mp4 /home/ros_ws/waskita_baru_1.mp4
+COPY expanded_vehicle_dataset.csv /home/ros_ws/expanded_vehicle_dataset.csv
+
+# Make scripts executable
+RUN chmod +x /entrypoint.sh
+RUN chmod +x /home/ros_ws/launch.sh
+
+# Setup environment variables
+ENV PYTHONPATH=/home/yolov9:${PYTHONPATH}
+ENV CUDA_VISIBLE_DEVICES=0
+
+ENTRYPOINT ["/entrypoint.sh"]
+CMD ["bash"]

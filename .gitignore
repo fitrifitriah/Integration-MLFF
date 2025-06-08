@@ -1,21 +1,21 @@
-# Buat file .gitignore
+# Tulis .gitignore yang benar
 @"
 # Python
 __pycache__/
 *.py[cod]
 *$py.class
 
-# Model files (optional - remove if you want to include models)
+# Model files
 *.pt
 *.pth
 *.weights
 
-# Video files (optional - remove if you want to include videos)
+# Video files
 *.mp4
 *.avi
 *.mov
 
-# # Firebase credentials
+# Firebase credentials
 mlff-firebase-key.json
 
 # Docker generated
@@ -25,4 +25,4 @@ Thumbs.db
 # Logs
 logs/
 *.log
-"@ > .gitignore
+"@ | Set-Content -Path .gitignore
